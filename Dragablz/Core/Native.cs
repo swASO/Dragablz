@@ -56,13 +56,23 @@ namespace Dragablz.Core
         [DllImport("user32.dll")]
         private static extern bool ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
+        [DllImport("User32.dll")]
+        static extern IntPtr GetAncestor(IntPtr hwnd, GetAncestor_Flags gaFlags);
+
+        internal enum GetAncestor_Flags
+        {
+            GetParent = 1,
+            GetRoot = 2,
+            GetRootOwner = 3
+        }
+
         public static Point ToWpf(this Point pixelPoint)
         {
             var desktop = GetDC(IntPtr.Zero); 
             var dpi = GetDeviceCaps(desktop, 88);
             ReleaseDC(IntPtr.Zero, desktop);
 
-            var physicalUnitSize = 96d / dpi ;
+            var physicalUnitSize = 96d / dpi;
             var wpfPoint = new Point(physicalUnitSize * pixelPoint.X, physicalUnitSize * pixelPoint.Y);
 
             return wpfPoint;
@@ -74,13 +84,23 @@ namespace Dragablz.Core
             {
                 var hwndSource = PresentationSource.FromVisual(window) as HwndSource;
                 var handle = hwndSource != null ? hwndSource.Handle : IntPtr.Zero;
-                return new {window, handle};
+                var parentHandle = GetAncestor(handle, GetAncestor_Flags.GetRoot);
+                return new { window, handle, parentHandle };
             }).Where(x => x.handle != IntPtr.Zero)
-                .ToDictionary(x => x.handle, x => x.window);
+                .ToDictionary(x => x.handle, x => new { x.window, x.parentHandle } );
+
 
             for (var hWnd = GetTopWindow(IntPtr.Zero); hWnd != IntPtr.Zero; hWnd = GetWindow(hWnd, GW_HWNDNEXT))
-                if (windowsByHandle.ContainsKey((hWnd)))
-                    yield return windowsByHandle[hWnd];
+            {
+
+                var item = windowsByHandle.FirstOrDefault(s => s.Key == hWnd || (s.Value.parentHandle != IntPtr.Zero && s.Value.parentHandle == hWnd));
+                if (item.Key != IntPtr.Zero && item.Value != null)
+                {
+                    yield return windowsByHandle[item.Key].window;
+                }
+            }
+                
+
         }
 
         public const int SW_SHOWNORMAL = 1;
